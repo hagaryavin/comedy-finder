@@ -3,7 +3,7 @@ name: Run Scraper Daily
 on:
   schedule:
     - cron: "0 3 * * *" # רץ כל יום ב-03:00
-  workflow_dispatch: # מאפשר להריץ ידנית
+  workflow_dispatch:
 
 jobs:
   run-scraper:
@@ -19,9 +19,13 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          cd scraper
+          npm install
 
       - name: Run scraper
         env:
           DB_URL: ${{ secrets.DB_URL }}
-        run: node scraper/scraper.js
+        run: |
+          cd scraper
+          node scraper.js
