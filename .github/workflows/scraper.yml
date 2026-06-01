@@ -1,0 +1,27 @@
+name: Run Scraper Daily
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # רץ כל יום ב-03:00
+  workflow_dispatch: # מאפשר להריץ ידנית
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run scraper
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+        run: node scraper/scraper.js
