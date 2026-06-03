@@ -1,5 +1,4 @@
 process.env.DOTENVX_DISABLE = "1";
-require("dotenv").config();
 console.log("DB_URL:", process.env.DB_URL);
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
