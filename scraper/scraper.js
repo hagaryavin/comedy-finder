@@ -16,9 +16,19 @@ function cleanDateString(dateStr) {
 async function scrape() {
   console.log("DB_URL בשימוש:", process.env.DB_URL);
 
+  // ⭐ חשוב: שימוש ב-Chrome שמותקן ב-GitHub Actions
   const browser = await puppeteer.launch({
-    headless: false,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process"
+    ],
   });
 
   const page = await browser.newPage();
@@ -81,28 +91,26 @@ async function scrape() {
     const tourHtml = await page.content();
     const $$ = cheerio.load(tourHtml);
 
-    $$(".dates-table tbody tr").each(async (i, row) => {
+    const rows = $$(".dates-table tbody tr");
+
+    for (const row of rows) {
       const dateText = $$(row).find("td").eq(0).text().trim();
       const venue = $$(row).find("td").eq(1).text().trim();
       const location = $$(row).find("td").eq(2).text().trim();
       const ticketLink =
         $$(row).find("td").eq(3).find("a").attr("href") || null;
 
-      // דילוג על שורות חסרות מידע
       if (!dateText || !location) {
         console.log("מדלג על שורה חסרה:", { dateText, venue, location });
-        return;
+        continue;
       }
 
-      // ניקוי סיומות כמו 1st, 2nd, 3rd, 14th
       const cleanedDate = cleanDateString(dateText);
-
       const parsedDate = new Date(cleanedDate);
 
-      // בדיקת תאריך תקין
       if (isNaN(parsedDate.getTime())) {
         console.log("תאריך לא תקין, מדלג:", dateText);
-        return;
+        continue;
       }
 
       const isoDate = parsedDate.toISOString().split("T")[0];
@@ -112,7 +120,7 @@ async function scrape() {
          VALUES ($1, $2, $3, $4, $5)`,
         [tourId, isoDate, venue, location, ticketLink]
       );
-    });
+    }
   }
 
   await client.end();
