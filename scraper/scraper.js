@@ -8,7 +8,7 @@ const { Client } = require("pg");
 
 puppeteer.use(StealthPlugin());
 
-// פונקציה שמנקה סיומות כמו 1st, 2nd, 3rd, 14th
+// ניקוי סיומות כמו 1st, 2nd, 3rd, 14th
 function cleanDateString(dateStr) {
   return dateStr.replace(/(\d+)(st|nd|rd|th)/, "$1");
 }
@@ -16,10 +16,10 @@ function cleanDateString(dateStr) {
 async function scrape() {
   console.log("DB_URL בשימוש:", process.env.DB_URL);
 
-  // ⭐ חשוב: שימוש ב-Chrome שמותקן ב-GitHub Actions
+  // ⭐ שימוש ב-Chrome שמותקן ב-GitHub Actions
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/google-chrome",
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -60,20 +60,24 @@ async function scrape() {
 
   console.log(`נמצאו ${tours.length} טורים אמיתיים`);
 
-  // חיבור ל-Supabase
+  // ⭐ חיבור ל-Supabase עם תמיכה ב-IPv4 בלבד
   const client = new Client({
     connectionString: process.env.DB_URL,
     ssl: { rejectUnauthorized: false },
+    keepAlive: true,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 10000,
+    query_timeout: 10000,
+    idle_in_transaction_session_timeout: 10000,
+    application_name: "github-actions"
   });
 
   await client.connect();
 
-  // איפוס טבלאות
   console.log("מוחק נתונים ישנים...");
   await client.query("DELETE FROM shows");
   await client.query("DELETE FROM tours");
 
-  // הכנסת טורים
   for (const t of tours) {
     const result = await client.query(
       `INSERT INTO tours (title, url)
@@ -84,7 +88,6 @@ async function scrape() {
 
     const tourId = result.rows[0].id;
 
-    // גרידת דף הטור
     console.log(`מגרד את ${t.title}...`);
     await page.goto(t.link, { waitUntil: "domcontentloaded", timeout: 60000 });
 
