@@ -113,9 +113,17 @@ async function scrape() {
 
       const cleanedDate = cleanDateString(dateText);
       const parsedDate = new Date(cleanedDate);
+      // דילוג על הופעות שכבר עברו
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); 
 
       if (isNaN(parsedDate.getTime())) {
-        console.log("תאריך לא תקין, מדלג:", dateText);
+        console.log("תאריך לא תקין, מדלג:", { dateText, venue, location });
+        continue;
+      }
+      
+      if (parsedDate < today) {
+        console.log("מדלג על הופעה מהעבר:", { dateText, venue, location });
         continue;
       }
 
