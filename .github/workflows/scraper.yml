@@ -28,6 +28,9 @@ jobs:
           cd scraper
           npm install
 
+      - name: Print all env vars
+        run: printenv
+
       - name: Run scraper
         env:
           DB_URL: ${{ secrets.DB_URL }}
