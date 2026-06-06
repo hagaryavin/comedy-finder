@@ -1,5 +1,8 @@
+// ❗ חובה: לכבות כל טעינה של dotenv/dotenvx
 process.env.DOTENVX_DISABLE = "1";
-console.log("DB_URL:", process.env.DB_URL);
+
+// אין require("dotenv") ואין שום טעינה של קבצי env
+
 const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const cheerio = require("cheerio");
@@ -13,6 +16,7 @@ function cleanDateString(dateStr) {
 }
 
 async function scrape() {
+  console.log("DB_URL:", process.env.DB_URL); // בדיקה חשובה
   console.log("DB_URL בשימוש:", process.env.DB_URL);
 
   // ⭐ שימוש ב-Chrome שמותקן ב-GitHub Actions
@@ -59,7 +63,7 @@ async function scrape() {
 
   console.log(`נמצאו ${tours.length} טורים אמיתיים`);
 
-  // ⭐ חיבור ל-Supabase עם תמיכה ב-IPv4 בלבד
+  // ⭐ חיבור ל-Supabase עם IPv4 בלבד
   const client = new Client({
     connectionString: process.env.DB_URL,
     ssl: { rejectUnauthorized: false },
