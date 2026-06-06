@@ -3,7 +3,7 @@ process.env.DOTENVX_DISABLE = "1";
 
 // אין require("dotenv") ואין שום טעינה של קבצי env
 
-const puppeteer = require("puppeteer-extra");
+const puppeteer = require("puppeteer-extra"); 
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const cheerio = require("cheerio");
 const { Client } = require("pg");
