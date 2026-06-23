@@ -1,9 +1,7 @@
 // ❗ חובה: לכבות כל טעינה של dotenv/dotenvx
 process.env.DOTENVX_DISABLE = "1";
 
-// אין require("dotenv") ואין שום טעינה של קבצי env
-
-const puppeteer = require("puppeteer-extra"); 
+const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const cheerio = require("cheerio");
 const { Client } = require("pg");
@@ -15,11 +13,26 @@ function cleanDateString(dateStr) {
   return dateStr.replace(/(\d+)(st|nd|rd|th)/, "$1");
 }
 
-async function scrape() {
-  console.log("DB_URL:", process.env.DB_URL); // בדיקה חשובה
-  console.log("DB_URL בשימוש:", process.env.DB_URL);
+// ⭐ פונקציית retry לניווט
+async function safeGoto(page, url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: 90000, // ⬅ הגדלתי timeout
+      });
+      return;
+    } catch (err) {
+      console.log(`❗ ניסיון ${i + 1} לטעינת ${url} נכשל`);
+      if (i === retries - 1) throw err;
+      await new Promise(res => setTimeout(res, 2000));
+    }
+  }
+}
 
-  // ⭐ שימוש ב-Chrome שמותקן ב-GitHub Actions
+async function scrape() {
+  console.log("DB_URL:", process.env.DB_URL);
+
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/google-chrome",
@@ -40,10 +53,7 @@ async function scrape() {
   );
 
   console.log("טוען את דף הטורים...");
-  await page.goto("https://www.comedy.co.uk/live/tours/", {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
-  });
+  await safeGoto(page, "https://www.comedy.co.uk/live/tours/");
 
   await page.waitForSelector(".menu-item-label");
 
@@ -63,36 +73,47 @@ async function scrape() {
 
   console.log(`נמצאו ${tours.length} טורים אמיתיים`);
 
-  // ⭐ חיבור ל-Supabase עם IPv4 בלבד
+  // ⭐ חיבור ל-Supabase
   const client = new Client({
     connectionString: process.env.DB_URL,
     ssl: { rejectUnauthorized: false },
     keepAlive: true,
-    connectionTimeoutMillis: 10000,
-    statement_timeout: 10000,
-    query_timeout: 10000,
-    idle_in_transaction_session_timeout: 10000,
-    application_name: "github-actions"
   });
 
   await client.connect();
 
-  console.log("מוחק נתונים ישנים...");
-  await client.query("DELETE FROM shows");
-  await client.query("DELETE FROM tours");
+  // ⭐ מוחק רק הופעות מהעבר — לא מוחק הכול!
+  console.log("מוחק הופעות מהעבר בלבד...");
+  await client.query(`DELETE FROM shows WHERE date < CURRENT_DATE`);
 
   for (const t of tours) {
-    const result = await client.query(
-      `INSERT INTO tours (title, url)
-       VALUES ($1, $2)
-       RETURNING id`,
-      [t.title, t.link]
-    );
-
-    const tourId = result.rows[0].id;
-
     console.log(`מגרד את ${t.title}...`);
-    await page.goto(t.link, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+    // ⭐ עטיפה ב-try/catch כדי שלא יפיל את כל הריצה
+    let tourId;
+    try {
+      // ⭐ UPSERT לטבלת tours
+      const result = await client.query(
+        `INSERT INTO tours (title, url)
+         VALUES ($1, $2)
+         ON CONFLICT (url) DO UPDATE SET title = EXCLUDED.title
+         RETURNING id`,
+        [t.title, t.link]
+      );
+
+      tourId = result.rows[0].id;
+    } catch (err) {
+      console.log("❗ שגיאה בהכנסת טור:", t.title, err);
+      continue; // לא מנסים להכניס הופעות בלי טור
+    }
+
+    // ⭐ טעינת דף הטור עם retry
+    try {
+      await safeGoto(page, t.link);
+    } catch (err) {
+      console.log("❗ לא ניתן לטעון את דף הטור:", t.link);
+      continue;
+    }
 
     const tourHtml = await page.content();
     const $$ = cheerio.load(tourHtml);
@@ -113,15 +134,15 @@ async function scrape() {
 
       const cleanedDate = cleanDateString(dateText);
       const parsedDate = new Date(cleanedDate);
-      // דילוג על הופעות שכבר עברו
+
       const today = new Date();
-      today.setHours(0, 0, 0, 0); 
+      today.setHours(0, 0, 0, 0);
 
       if (isNaN(parsedDate.getTime())) {
         console.log("תאריך לא תקין, מדלג:", { dateText, venue, location });
         continue;
       }
-      
+
       if (parsedDate < today) {
         console.log("מדלג על הופעה מהעבר:", { dateText, venue, location });
         continue;
@@ -129,11 +150,18 @@ async function scrape() {
 
       const isoDate = parsedDate.toISOString().split("T")[0];
 
-      await client.query(
-        `INSERT INTO shows (tour_id, date, venue, location, tickets_url)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [tourId, isoDate, venue, location, ticketLink]
-      );
+      // ⭐ UPSERT לטבלת shows + geocoded=false להופעות חדשות
+      try {
+        await client.query(
+          `INSERT INTO shows (tour_id, date, venue, location, tickets_url, geocoded)
+           VALUES ($1, $2, $3, $4, $5, false)
+           ON CONFLICT (tour_id, date, venue, location)
+           DO UPDATE SET tickets_url = EXCLUDED.tickets_url`,
+          [tourId, isoDate, venue, location, ticketLink]
+        );
+      } catch (err) {
+        console.log("❗ שגיאה בהכנסת הופעה:", { tourId, isoDate, venue, location }, err);
+      }
     }
   }
 
