@@ -1,7 +1,6 @@
 // geocode.js
 process.env.DOTENVX_DISABLE = "1";
 
-const fetch = require("node-fetch");
 const { Client } = require("pg");
 
 const LOCATIONIQ_KEY = process.env.LOCATIONIQ_KEY;
@@ -43,7 +42,6 @@ async function geocode() {
       continue;
     }
 
-    // ⭐ אין תוצאות → מנסים שוב מחר
     if (!Array.isArray(results) || results.length === 0) {
       console.log("⚠ אין תוצאות — מנסה שוב מחר");
       continue;
@@ -51,23 +49,18 @@ async function geocode() {
 
     let best;
 
-    // ⭐ אם יש רק תוצאה אחת
     if (results.length === 1) {
       best = results[0];
     } else {
-      // ⭐ יש כמה תוצאות → קודם UK
       let candidates = results.filter(
         r => r.address && r.address.country_code === "gb"
       );
 
-      // ⭐ אם אין UK → כל התוצאות
       if (candidates.length === 0) {
         candidates = results;
       }
 
-      // ⭐ מיון לפי importance
       candidates.sort((a, b) => (b.importance || 0) - (a.importance || 0));
-
       best = candidates[0];
     }
 
