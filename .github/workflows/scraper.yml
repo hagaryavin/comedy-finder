@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Chrome
         run: |
@@ -23,19 +23,43 @@ jobs:
           sudo apt-get install -y google-chrome-stable
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install dependencies
         run: |
           cd scraper
           npm install
 
-      - name: Print all env vars
-        run: printenv
-
       - name: Run scraper
         run: |
           cd scraper
           node scraper.js
+
+  geocode:
+    needs: run-scraper
+    runs-on: ubuntu-latest
+
+    env:
+      DB_URL: ${{ secrets.DB_URL }}
+      LOCATIONIQ_KEY: ${{ secrets.LOCATIONIQ_KEY }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: |
+          cd scraper
+          npm install
+
+      - name: Run geocoder
+        run: |
+          cd scraper
+          node geocode.js
